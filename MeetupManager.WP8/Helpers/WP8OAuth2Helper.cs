@@ -1,72 +1,155 @@
-﻿using System;
+﻿using Microsoft.Phone.Controls;
+using Microsoft.Phone.Reactive;
+using Microsoft.Phone.Shell;
+using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Navigation;
 
 namespace MeetupManager.WP8.Helpers
 {
     public class WP8OAuth2Helper
     {
-        private string _clientId;
-        private string _clientSecret;
-        private Uri _authUrl;
-        private Uri _redirectUrl;
-        private Uri _accessTokenUrl;
+        private readonly string _clientId;
+        private readonly string _clientSecret;
+        private readonly Uri _authorizeUrl;
+        private readonly Uri _redirectUrl;
+        private readonly Uri _tokenUrl;
+        private readonly PhoneApplicationFrame _frame;
 
-        public WP8OAuth2Helper(string clientId, string clientSecret, Uri authorizeUrl, Uri redirectUrl, Uri accessTokenUrl)
+        private bool _isComplete;
+
+        public event EventHandler<AuthCompletedEventArgs> Completed;
+        public event EventHandler<AuthErrorEventArgs> Error;
+
+        public WP8OAuth2Helper(string clientId, string clientSecret, Uri authorizeUrl, Uri redirectUrl, Uri tokenUrl)
         {
             this._clientId = clientId;
             this._clientSecret = clientSecret;
-            this._authUrl = authorizeUrl;
+            this._authorizeUrl = authorizeUrl;
             this._redirectUrl = redirectUrl;
-            this._accessTokenUrl = accessTokenUrl;
+            this._tokenUrl = tokenUrl;
+            this._frame = Application.Current.RootVisual as PhoneApplicationFrame;
         }
 
-        public bool IsAuthenticated
+        public async void Authenticate()
         {
-            get
+            string loginViewUri = string.Format("/Views/OAuthLoginView.xaml?authUrl={0}&clientId={1}&redirectUrl={2}", this._authorizeUrl, this._clientId, this._redirectUrl.AbsoluteUri);
+
+            SemaphoreSlim semaphore = new SemaphoreSlim(0, 1);
+
+            Observable.FromEvent<NavigatingCancelEventHandler, NavigatingCancelEventArgs>(
+                h => new NavigatingCancelEventHandler(h),
+                h => this._frame.Navigating += h,
+                h => this._frame.Navigating -= h)
+                    .SkipWhile(h => h.EventArgs.NavigationMode != NavigationMode.Back)
+                    .Take(1)
+                    .Subscribe(e => semaphore.Release());
+
+            this._frame.Navigate(new Uri(loginViewUri, UriKind.Relative));
+
+            await semaphore.WaitAsync();
+
+            string authCode = string.Empty;
+            if (PhoneApplicationService.Current.State.ContainsKey("MeetupManager.WP8.AuthCode"))
             {
-                return true;
+                authCode = (string)PhoneApplicationService.Current.State["MeetupManager.WP8.AuthCode"];
+
+                RequestAccessTokenAsync(authCode).ContinueWith(task =>
+                {
+                    if (task.IsFaulted)
+                        OnError(task.Exception);
+                    else
+                        OnSuccess(task.Result);
+                });
             }
         }
 
-        public void GetRequestToken()
+        private async Task<IDictionary<string, string>> RequestAccessTokenAsync(string authCode)
         {
-            HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(this._authUrl);
+            Dictionary<string, string> query = new Dictionary<string, string>();
+            query.Add("grant_type", "authorization_code");
+            query.Add("code", authCode);
+            query.Add("redirect_uri", this._redirectUrl.AbsoluteUri);
+            query.Add("client_id", this._clientId);
+            if (!string.IsNullOrEmpty(this._clientSecret))
+                query.Add("client_secret", this._clientSecret);
+
+            string queryString = QueryStringHelper.BuildQueryString(query);
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(this._tokenUrl);
             request.Method = "POST";
             request.ContentType = "application/x-www-form-urlencoded";
-            request.BeginGetRequestStream(new AsyncCallback(GetRequestStreamCallback), request);
+
+            byte[] buffer = Encoding.UTF8.GetBytes(queryString);
+            request.ContentLength = buffer.Length;
+
+            using (Stream stream = await request.GetRequestStreamAsync())
+            {
+                stream.Write(buffer, 0, buffer.Length);
+            }
+
+            using (WebResponse response = await request.GetResponseAsync())
+            {
+                using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+                {
+                    string result = reader.ReadToEnd();
+                    return JsonConvert.DeserializeObject<IDictionary<string, string>>(result);
+                }
+            }
         }
 
-        private void GetRequestStreamCallback(IAsyncResult callbackResult)
+        public void OnSuccess(IDictionary<string, string> props)
         {
-            HttpWebRequest request = (HttpWebRequest)callbackResult.AsyncState;
+            if (this._isComplete)
+                return;
 
-            Stream postStream = request.EndGetRequestStream(callbackResult);
+            this._isComplete = true;
 
-            string postData = string.Format("consumer_key=consumerKey&redirect_uri={0}", this._redirectUrl);
-            byte[] byteArray = Encoding.UTF8.GetBytes(postData);
-
-            postStream.Write(byteArray, 0, byteArray.Length);
-            postStream.Close();
-
-            request.BeginGetResponse(new AsyncCallback(GetResponseStreamCallback), request);
+            var completed = Completed;
+            if (completed != null)
+                completed(this, new AuthCompletedEventArgs(props));
         }
 
-        private void GetResponseStreamCallback(IAsyncResult callbackResult)
+        public void OnError(Exception exception)
         {
-            HttpWebRequest request = (HttpWebRequest)callbackResult.AsyncState;
-            HttpWebResponse response = (HttpWebResponse)request.EndGetResponse(callbackResult);
+            var error = Error;
+            if (error != null)
+                error(this, new AuthErrorEventArgs(exception));
+        }
+    }
 
-            
+    public class AuthCompletedEventArgs : EventArgs
+    {
+        public bool IsAuthenticated { get { return this.AuthProperties != null; } }
+
+        public IDictionary<string, string> AuthProperties { get; private set; }
+
+        public AuthCompletedEventArgs(IDictionary<string, string> authProperties)
+        {
+            this.AuthProperties = authProperties;
+        }
+    }
+
+    public class AuthErrorEventArgs : EventArgs
+    {
+        public Exception Exception { get; private set; }
+
+        public AuthErrorEventArgs(Exception e)
+        {
+            this.Exception = e;
         }
 
-        public void GetAccessToken()
+        public AuthErrorEventArgs(string message)
         {
-
-        }        
+            this.Exception = new Exception(message);
+        }
     }
 }

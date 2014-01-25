@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace MeetupManager.WP8.PlatformSpecific
 {
@@ -14,12 +15,18 @@ namespace MeetupManager.WP8.PlatformSpecific
     {
         public void SendMessage(string message, string title = null)
         {
-            MessageBox.Show(message, title, MessageBoxButton.OK);
+            Deployment.Current.Dispatcher.BeginInvoke(() =>
+            {
+                MessageBox.Show(message, title, MessageBoxButton.OK);
+            });
         }
 
         public void SendToast(string message)
         {
-            MessageBox.Show(message);
+            Deployment.Current.Dispatcher.BeginInvoke(() =>
+            {
+                MessageBox.Show(message);
+            });
         }
 
         public void SendConfirmation(string message, string title, Action<bool> confirmationAction)
