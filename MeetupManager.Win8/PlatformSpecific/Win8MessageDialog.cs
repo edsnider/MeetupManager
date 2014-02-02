@@ -4,19 +4,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Windows.UI.Popups;
 
 namespace MeetupManager.Win8.PlatformSpecific
 {
     public class Win8MessageDialog : IMessageDialog
     {
-        public void SendMessage(string message, string title = null)
+        public async void SendMessage(string message, string title = null)
         {
-            throw new NotImplementedException();
+            var dialog = new MessageDialog(message, title);
+            await dialog.ShowAsync();
         }
 
-        public void SendToast(string message)
+        public async void SendToast(string message)
         {
-            throw new NotImplementedException();
+            var dialog = new MessageDialog(message);
+            await dialog.ShowAsync();
         }
 
         public void SendConfirmation(string message, string title, Action<bool> confirmationAction)

@@ -11,7 +11,7 @@ namespace MeetupManager.Win8.PlatformSpecific
     {
         public void LoginAsync(Action<bool> loginCallback)
         {
-            throw new NotImplementedException();
+            loginCallback(true);
         }
     }
 }
