@@ -99,7 +99,6 @@
     <Compile Include="Converters\UppercaseConverter.cs" />
     <Compile Include="DebugTrace.cs" />
     <Compile Include="Helpers\QueryStringHelper.cs" />
-    <Compile Include="Helpers\WP8OAuth2Helper.cs" />
     <Compile Include="LocalizedStrings.cs" />
     <Compile Include="PlatformSpecific\WP8MeetupLogin.cs" />
     <Compile Include="PlatformSpecific\WP8MessageDialog.cs" />
@@ -273,9 +272,7 @@
       <Name>MeetupManager.Portable</Name>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Helpers\" />
-  </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\$(TargetFrameworkIdentifier)\$(TargetFrameworkVersion)\Microsoft.$(TargetFrameworkIdentifier).$(TargetFrameworkVersion).Overrides.targets" />
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\$(TargetFrameworkIdentifier)\$(TargetFrameworkVersion)\Microsoft.$(TargetFrameworkIdentifier).CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
