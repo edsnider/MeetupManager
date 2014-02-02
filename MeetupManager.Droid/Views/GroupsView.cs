@@ -25,7 +25,7 @@ using MeetupManager.Portable.ViewModels;
 namespace MeetupManager.Droid.Views
 {
     [Activity(Label = "Groups", Icon = "@drawable/ic_launcher")]
-    public class GroupsView : BaseView, AbsListView.IOnScrollListener
+    public class GroupsView : BaseView
 	{
 
         private GroupsViewModel viewModel;
@@ -43,8 +43,6 @@ namespace MeetupManager.Droid.Views
 			SetContentView(Resource.Layout.view_groups);
 
             FindViewById<GridView>(Resource.Id.grid).SetOnScrollListener(this);
-
-            await ViewModel.ExecuteRefreshCommand();
         }
 
         public override bool OnCreateOptionsMenu(Android.Views.IMenu menu)
@@ -65,27 +63,5 @@ namespace MeetupManager.Droid.Views
             }
             return base.OnOptionsItemSelected(item);
         }
-
-
-        #region Scroll change to trigger load more.
-        private readonly object Lock = new object();
-        public void OnScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount)
-        {
-            lock (this.Lock)
-            {
-                var loadMore = firstVisibleItem + visibleItemCount >= (totalItemCount - 3);
-
-                if (loadMore && this.ViewModel.CanLoadMore && !this.ViewModel.IsBusy)
-                {
-                    this.ViewModel.LoadMoreCommand.Execute(null);
-                }
-            }
-        }
-
-        public void OnScrollStateChanged(AbsListView view, ScrollState scrollState)
-        {
-
-        }
-        #endregion
     }
 }

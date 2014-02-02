@@ -1,52 +1,81 @@
-﻿using MeetupManager.Portable.Helpers;
+﻿using System.Globalization;
+using System.Windows.Navigation;
+using Cirrious.CrossCore;
+using Cirrious.MvvmCross.WindowsPhone.Platform;
 using MeetupManager.Portable.Interfaces;
-using MeetupManager.Portable.Services;
-using MeetupManager.WP8.Helpers;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Threading;
+using MeetupManager.Portable.Services;
+using Microsoft.Phone.Controls;
 
 namespace MeetupManager.WP8.PlatformSpecific
 {
     public class WP8MeetupLogin : ILogin
     {
-        #region ILogin Implementation
-        WP8OAuth2Helper auth = new WP8OAuth2Helper(
-            clientId: MeetupService.ClientId,
-            clientSecret: MeetupService.ClientSecret,
-            authorizeUrl: new Uri("https://secure.meetup.com/oauth2/authorize"),
-            redirectUrl: new Uri("http://www.refractored.com/login_success.html"),
-            tokenUrl: new Uri("https://secure.meetup.com/oauth2/access")
-            );
-
-        public void LoginAsync(Action<bool> loginCallback)
+        private WebBrowser browser;
+        public WebBrowser Browser
         {
-            auth.Authenticate();
-
-            auth.Completed += (s, ee) =>
+            get { return browser; }
+            set
             {
-                if (ee.IsAuthenticated)
-                {
-                    Settings.AccessToken = ee.AuthProperties["access_token"];
-                    Settings.RefreshToken = ee.AuthProperties["refresh_token"];
+                browser = value;
+                browser.Navigated += BrowserNavigated;
+            }
+        }
+        private Action<bool, Dictionary<string, string>> LoginCallback { get; set; }
+        public void LoginAsync(Action<bool, Dictionary<string, string>> loginCallback)
+        {
+            LoginCallback = loginCallback;
+            var url = "https://secure.meetup.com/oauth2/authorize" +
+                      "?client_id=" + MeetupService.ClientId
+                      +"&response_type=code&redirect_uri=" + MeetupService.RedirectUrl;
 
-                    long time = 0;
-                    long.TryParse(ee.AuthProperties["expires_in"], out time);
-
-                    var nextTime = DateTime.UtcNow.AddSeconds(time).Ticks;
-                    Settings.KeyValidUntil = nextTime;
-                }
-
-                if (loginCallback != null)
-                    loginCallback(ee.IsAuthenticated);
-            };
+            
+            Deployment.Current.Dispatcher.BeginInvoke(() =>
+            {
+                // change UI here
+                Browser.Visibility = Visibility.Visible;
+                Browser.Navigate(new Uri(url));
+            });
+            
         }
 
-        #endregion
+        /// <summary>
+        /// We need to check the navigation if we have a success or not
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private async void BrowserNavigated(object sender, NavigationEventArgs e)
+        {
+            if (e.Uri.AbsoluteUri.StartsWith("http://www.refractored."))
+            {
+                var code = string.Empty;
+                if (e.Uri.Query.Contains("code"))
+                {
+                    var items = e.Uri.ParseQueryString();
+                    code = items["code"];
+                }
+                else
+                {
+                    LoginCallback(false, null);
+                }
 
+                Browser.Visibility = Visibility.Collapsed;
+                var service = Mvx.Resolve<IMeetupService>();
+                var result = await service.GetToken(code);
+                if (result == null)
+                {
+                    LoginCallback(false, null);
+                    return;
+                }
+                var stuff = new Dictionary<string, string>();
+                stuff.Add("access_token", result.access_token);
+                stuff.Add("token_type", result.token_type);
+                stuff.Add("expires_in", result.expires_in.ToString(CultureInfo.InvariantCulture));
+                stuff.Add("refresh_token", result.refresh_token);
+                LoginCallback(true, stuff);
+            }
+        }
     }
 }
